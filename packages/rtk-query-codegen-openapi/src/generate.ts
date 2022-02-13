@@ -28,6 +28,10 @@ function defaultIsDataResponse(code: string) {
   return !Number.isNaN(parsedCode) && parsedCode >= 200 && parsedCode < 300;
 }
 
+function defaultEndpointHeaders() {
+  return undefined;
+}
+
 function getOperationName({ verb, path, operation }: Pick<OperationDefinition, 'verb' | 'path' | 'operation'>) {
   return _getOperationName(verb, path, operation.operationId);
 }
@@ -66,11 +70,13 @@ export async function generateApi(
     exportName = 'enhancedApi',
     argSuffix = 'ApiArg',
     responseSuffix = 'ApiResponse',
+    endpointSuffix = '',
     hooks = false,
     outputFile,
     isDataResponse = defaultIsDataResponse,
     filterEndpoints,
     endpointOverrides,
+    endpointHeaders = defaultEndpointHeaders,
   }: GenerationOptions
 ) {
   const v3Doc = await getV3Doc(spec);
@@ -138,7 +144,14 @@ export async function generateApi(
         ...Object.values(interfaces),
         ...apiGen['aliases'],
         ...(hooks
-          ? [generateReactHooks({ exportName: generatedApiName, operationDefinitions, endpointOverrides })]
+          ? [
+              generateReactHooks({
+                exportName: generatedApiName,
+                operationDefinitions,
+                endpointOverrides,
+                endpointSuffix,
+              }),
+            ]
           : []),
       ],
       factory.createToken(ts.SyntaxKind.EndOfFileToken),
@@ -294,7 +307,7 @@ export async function generateApi(
     );
 
     return generateEndpointDefinition({
-      operationName,
+      operationName: operationName + endpointSuffix,
       type: isQuery ? 'query' : 'mutation',
       Response: ResponseTypeName,
       QueryArg,
@@ -314,19 +327,21 @@ export async function generateApi(
     queryArg: QueryArgDefinitions;
     isQuery: boolean;
   }) {
-    const { path, verb } = operationDefinition;
+    const { path, verb, operation } = operationDefinition;
+    const operationName = getOperationName({ verb, path, operation });
 
+    const rootObject = factory.createIdentifier('queryArg');
     const pathParameters = Object.values(queryArg).filter((def) => def.origin === 'param' && def.param.in === 'path');
     const queryParameters = Object.values(queryArg).filter((def) => def.origin === 'param' && def.param.in === 'query');
-    const headerParameters = Object.values(queryArg).filter(
-      (def) => def.origin === 'param' && def.param.in === 'header'
+    const headerParameters = generateObjectLiteral(
+      rootObject,
+      Object.values(queryArg).filter((def) => def.origin === 'param' && def.param.in === 'header'),
+      endpointHeaders(operationName, operationDefinition) ?? []
     );
     const cookieParameters = Object.values(queryArg).filter(
       (def) => def.origin === 'param' && def.param.in === 'cookie'
     );
     const bodyParameter = Object.values(queryArg).find((def) => def.origin === 'body');
-
-    const rootObject = factory.createIdentifier('queryArg');
 
     return factory.createArrowFunction(
       undefined,
@@ -371,12 +386,9 @@ export async function generateApi(
                   factory.createIdentifier('cookies'),
                   generateQuerArgObjectLiteralExpression(cookieParameters, rootObject)
                 ),
-            headerParameters.length === 0
+            headerParameters === undefined
               ? undefined
-              : factory.createPropertyAssignment(
-                  factory.createIdentifier('headers'),
-                  generateQuerArgObjectLiteralExpression(headerParameters, rootObject)
-                ),
+              : factory.createPropertyAssignment(factory.createIdentifier('headers'), headerParameters),
             queryParameters.length === 0
               ? undefined
               : factory.createPropertyAssignment(
@@ -438,6 +450,28 @@ function generateQuerArgObjectLiteralExpression(queryArgs: QueryArgDefinition[],
   return factory.createObjectLiteralExpression(
     queryArgs.map((param) => createPropertyAssignment(param.originalName, accessProperty(rootObject, param.name)), true)
   );
+}
+
+function generateObjectLiteral(
+  rootObject: ts.Identifier,
+  parameters: QueryArgDefinition[],
+  otherProps: Array<{ name: string; value: string }>
+) {
+  const exps = [
+    ...parameters.map(
+      (param) => createPropertyAssignment(param.originalName, accessProperty(rootObject, param.name)),
+      true
+    ),
+    ...otherProps.map((pair) =>
+      createPropertyAssignment(factory.createStringLiteral(pair.name), factory.createStringLiteral(pair.value))
+    ),
+  ];
+
+  if (exps.length === 0) {
+    return undefined;
+  }
+
+  return factory.createObjectLiteralExpression(exps);
 }
 
 type QueryArgDefinition = {

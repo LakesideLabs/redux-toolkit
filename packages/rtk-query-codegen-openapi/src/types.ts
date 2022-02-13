@@ -51,11 +51,20 @@ export interface CommonOptions {
    * defaults to false
    */
   hooks?: boolean;
+  /**
+   * defaults to ""
+   */
+  endpointSuffix?: string;
 }
 
 export type TextMatcher = string | RegExp | (string | RegExp)[];
 
 export type EndpointMatcherFunction = (operationName: string, operationDefinition: OperationDefinition) => boolean;
+
+export type EndpointHeadersFunction = (
+  operationName: string,
+  operationDefinition: OperationDefinition
+) => Array<{ name: string; value: string }> | undefined;
 
 export type EndpointMatcher = TextMatcher | EndpointMatcherFunction;
 
@@ -63,6 +72,7 @@ export interface OutputFileOptions extends Partial<CommonOptions> {
   outputFile: string;
   filterEndpoints?: EndpointMatcher;
   endpointOverrides?: EndpointOverrides[];
+  endpointHeaders?: EndpointHeadersFunction;
 }
 
 export interface EndpointOverrides {

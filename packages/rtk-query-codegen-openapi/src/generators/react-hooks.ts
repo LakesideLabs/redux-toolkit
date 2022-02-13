@@ -8,12 +8,14 @@ import { factory } from '../utils/factory';
 type GetReactHookNameParams = {
   operationDefinition: OperationDefinition;
   endpointOverrides: EndpointOverrides[] | undefined;
+  endpointSuffix: string;
 };
 
 const getReactHookName = ({
   operationDefinition: { verb, path, operation },
   operationDefinition,
   endpointOverrides,
+  endpointSuffix
 }: GetReactHookNameParams) => {
   const overrides = getOverrides(operationDefinition, endpointOverrides);
 
@@ -21,7 +23,7 @@ const getReactHookName = ({
     undefined,
     undefined,
     factory.createIdentifier(
-      `use${capitalize(getOperationName(verb, path, operation.operationId))}${
+      `use${capitalize(getOperationName(verb, path, operation.operationId))}${endpointSuffix}${
         isQuery(verb, overrides) ? 'Query' : 'Mutation'
       }`
     ),
@@ -33,8 +35,9 @@ type GenerateReactHooksParams = {
   exportName: string;
   operationDefinitions: OperationDefinition[];
   endpointOverrides: EndpointOverrides[] | undefined;
+  endpointSuffix: string
 };
-export const generateReactHooks = ({ exportName, operationDefinitions, endpointOverrides }: GenerateReactHooksParams) =>
+export const generateReactHooks = ({ exportName, operationDefinitions, endpointOverrides, endpointSuffix }: GenerateReactHooksParams) =>
   factory.createVariableStatement(
     [factory.createModifier(ts.SyntaxKind.ExportKeyword)],
     factory.createVariableDeclarationList(
@@ -42,7 +45,7 @@ export const generateReactHooks = ({ exportName, operationDefinitions, endpointO
         factory.createVariableDeclaration(
           factory.createObjectBindingPattern(
             operationDefinitions.map((operationDefinition) =>
-              getReactHookName({ operationDefinition, endpointOverrides })
+              getReactHookName({ operationDefinition, endpointOverrides, endpointSuffix })
             )
           ),
           undefined,
